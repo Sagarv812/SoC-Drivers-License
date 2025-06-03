@@ -84,6 +84,8 @@ Both the programs are allotted the same amount of virtual memory by the OS. But 
 
 ---
 
+## Q6
 
+![Process List](q6/processes.png)
 
 
