@@ -11,9 +11,6 @@
 #define MAX_NUM_TOKENS 64
 
 
-volatile sig_atomic_t sigint_received = 0;
-
-
 /* Splits the string by space and returns the array of tokens
 *
 */
@@ -44,9 +41,6 @@ char **tokenize(char *line)
   return tokens;
 }
 
-void my_signal_handler(int sig){
-	kill(getpid(),1);
-}
 
 
 int main(int argc, char* argv[]) {
