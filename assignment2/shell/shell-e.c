@@ -4,7 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
-#include <signal.h>
+#include <errno.h>
 
 #define MAX_INPUT_SIZE 1024
 #define MAX_TOKEN_SIZE 64
@@ -45,31 +45,66 @@ char **tokenize(char *line)
 	return tokens;
 }
 
+int check_exit_status(int status)
+{
+	if (WIFEXITED(status) && WEXITSTATUS(status) == 1)
+	{
+		return 1;
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+void reap_zombie_children()
+{
+	int status;
+	pid_t pid;
+
+	while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
+	{
+		printf("Shell: Background process finished\n");
+		if (check_exit_status(status))
+		{
+			printf("EXITSTATUS: 1\n");
+		}
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	char line[MAX_INPUT_SIZE];
 	char **tokens;
 	int i;
 	char *buf;
-	signal(SIGINT, SIG_IGN);
 
 	while (1)
 	{
 
-		buf = getcwd(NULL, 0);
-		printf("%s$ ", buf);
+		(void)signal(SIGINT, SIG_IGN);
+
 		/* BEGIN: TAKING INPUT */
 		bzero(line, sizeof(line));
+		buf = getcwd(NULL, 0);
+		printf("%s$ ", buf);
 		scanf("%[^\n]", line);
 		getchar();
 
 		/* END: TAKING INPUT */
+
+		reap_zombie_children();
 
 		line[strlen(line)] = '\n'; // terminate with new line
 		tokens = tokenize(line);
 
 		if (tokens[0] != NULL)
 		{
+			char *last_token = tokens[0];
+			int i;
+			for (i = 1; tokens[i] != NULL; i++)
+				last_token = tokens[i];
+
 			if (strcmp(tokens[0], "cd") == 0)
 			{
 				if (chdir(tokens[1]) != 0)
@@ -83,14 +118,26 @@ int main(int argc, char *argv[])
 				}
 				free(tokens);
 				free(buf);
-				kill(getpid(), 1);
+				killpg(0, 1);
+			}
+			else if (strcmp(last_token, "&") == 0)
+			{
+				pid_t pid = fork();
+				tokens[i - 1] = NULL;
+				if (pid == 0)
+				{
+					execvp(tokens[0], tokens);
+
+					printf("Command not found\n");
+					exit(1);
+				}
 			}
 			else
 			{
 				pid_t pid = fork();
 				if (pid == 0)
 				{
-					signal(SIGINT, SIG_DFL);
+					(void)signal(SIGINT, SIG_DFL);
 					execvp(tokens[0], tokens);
 
 					printf("Command not found\n");
@@ -100,7 +147,6 @@ int main(int argc, char *argv[])
 				{
 					int ws;
 					waitpid(pid, &ws, 0);
-					signal(SIGINT, SIG_IGN);
 					if (WIFEXITED(ws))
 					{
 						if (WEXITSTATUS(ws))
